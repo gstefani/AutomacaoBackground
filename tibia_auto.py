@@ -19,12 +19,12 @@ class TibiaAutomation:
         
         # Configuração de hotkeys (global)
         self.hotkey_config = [
-            {'key': 'f7', 'delay': '100', 'enabled': True},
+            {'key': 'f7', 'delay': '2000', 'enabled': True},
             {'key': 'f8', 'delay': '100', 'enabled': True},
-            {'key': 'f9', 'delay': '100', 'enabled': True},
-            {'key': 'f10', 'delay': '100', 'enabled': True},
-            {'key': 'space', 'delay': '100', 'enabled': True},
-            {'key': 'f11', 'delay': '1000', 'enabled': True},
+            {'key': 'f9', 'delay': '1000', 'enabled': True},
+            {'key': 'f10', 'delay': '2000', 'enabled': True},
+            {'key': 'space', 'delay': '2000', 'enabled': True},
+            {'key': 'f11', 'delay': '300000', 'enabled': True},
         ]
         
         self.setup_ui()
@@ -292,27 +292,48 @@ class TibiaAutomation:
             # Enviar WM_KEYUP
             win32api.PostMessage(hwnd, win32con.WM_KEYUP, vk_code, 0)
     
-    def automation_loop(self, hwnd):
-        """Loop principal de automação"""
+    def hotkey_loop(self, hwnd, config):
+        """Loop independente para cada hotkey com seu próprio delay"""
         while self.running_automations.get(hwnd, False):
             try:
                 # Verificar se a janela ainda existe
                 if not win32gui.IsWindow(hwnd):
                     break
                 
-                # Executar apenas hotkeys ativas
-                for config in self.hotkey_config:
-                    if not self.running_automations.get(hwnd, False):
-                        break
-                    
-                    if config['enabled']:
-                        self.send_key_to_window(hwnd, config['key'])
-                        delay = float(config['delay']) / 1000.0
-                        time.sleep(delay)
-                    
+                if config['enabled']:
+                    self.send_key_to_window(hwnd, config['key'])
+                    delay = float(config['delay']) / 1000.0
+                    time.sleep(delay)
+            
             except Exception as e:
-                print(f"Erro na automação: {e}")
+                print(f"Erro no hotkey {config['key']}: {e}")
                 break
+    
+    def automation_loop(self, hwnd):
+        """Loop principal que gerencia threads independentes para cada hotkey"""
+        hotkey_threads = {}
+        
+        try:
+            # Criar e iniciar uma thread para cada hotkey
+            for i, config in enumerate(self.hotkey_config):
+                thread = threading.Thread(
+                    target=self.hotkey_loop, 
+                    args=(hwnd, config), 
+                    daemon=True,
+                    name=f"hotkey-{config['key']}-{hwnd}"
+                )
+                hotkey_threads[i] = thread
+                thread.start()
+            
+            # Manter o loop principal ativo enquanto há automação rodando
+            while self.running_automations.get(hwnd, False):
+                # Verificar se a janela ainda existe
+                if not win32gui.IsWindow(hwnd):
+                    break
+                time.sleep(0.1)  # Pequeno sleep para não sobrecarregar CPU
+        
+        except Exception as e:
+            print(f"Erro na automação: {e}")
     
     def start_automation(self, hwnd, status_var, start_btn, stop_btn):
         """Inicia automação para uma janela"""
