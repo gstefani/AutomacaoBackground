@@ -26,11 +26,11 @@ class TibiaAutomation:
         
         # Configuração de hotkeys (global)
         self.hotkey_config = [
-            {'key': 'f7', 'delay': '1000', 'enabled': True},
-            {'key': 'f8', 'delay': '100', 'enabled': True},
-            {'key': 'f9', 'delay': '500', 'enabled': True},
-            {'key': 'f10', 'delay': '1000', 'enabled': True},
-            {'key': 'space', 'delay': '300', 'enabled': True},
+            {'key': 'f7', 'delay': '200', 'enabled': True},
+            {'key': 'f8', 'delay': '200', 'enabled': True},
+            {'key': 'f9', 'delay': '200', 'enabled': True},
+            {'key': 'f10', 'delay': '200', 'enabled': True},
+            {'key': 'space', 'delay': '1000', 'enabled': True},
             {'key': 'f11', 'delay': '10000', 'enabled': True},
         ]
         

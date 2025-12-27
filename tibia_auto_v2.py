@@ -5,6 +5,7 @@ import time
 import win32gui
 import win32con
 import win32api
+from pynput import keyboard
 import json
 import os
 
@@ -24,18 +25,23 @@ class TibiaAutomation:
         self.pause_while_typing = {}  # {hwnd: pause_until_time}
         self.pause_duration = 0.5  # Pausa por 500ms quando detectar modificadores
         
+        # Cliente selecionado para ativar/desativar via hotkey
+        self.selected_client_hwnd = None
+        self.selected_client_button = None  # Rastrear o botão selecionado
+        
         # Configuração de hotkeys (global)
         self.hotkey_config = [
-            {'key': 'f7', 'delay': '1000', 'enabled': True},
-            {'key': 'f8', 'delay': '100', 'enabled': True},
-            {'key': 'f9', 'delay': '500', 'enabled': True},
-            {'key': 'f10', 'delay': '1000', 'enabled': True},
-            {'key': 'space', 'delay': '300', 'enabled': True},
+            {'key': 'f7', 'delay': '200', 'enabled': True},
+            {'key': 'f8', 'delay': '200', 'enabled': True},
+            {'key': 'f9', 'delay': '200', 'enabled': True},
+            {'key': 'f10', 'delay': '200', 'enabled': True},
+            {'key': 'space', 'delay': '1000', 'enabled': True},
             {'key': 'f11', 'delay': '10000', 'enabled': True},
         ]
         
         self.setup_ui()
         self.start_keyboard_monitor()
+        self.start_toggle_hotkey_listener()
         
     def setup_ui(self):
         # Frame principal
@@ -248,18 +254,25 @@ class TibiaAutomation:
         controls = tk.Frame(frame, bg='#2d2d2d')
         controls.pack(fill=tk.X, pady=(8, 0))
         
-        status_var = tk.StringVar(value="⚫ Parado")
+        status_var = tk.StringVar(value="[PARADO]")
         status_label = tk.Label(controls, textvariable=status_var, 
                                bg='#2d2d2d', fg='#888888', font=('Arial', 9))
         status_label.pack(side=tk.LEFT, padx=(0, 15))
         
-        start_btn = tk.Button(controls, text="▶ Start", 
+        # Botão de seleção
+        select_btn = tk.Button(controls, text="[SELECT]", 
+                              command=lambda: self.select_client(hwnd, select_btn),
+                              bg='#3498db', fg='#ffffff', relief=tk.FLAT,
+                              font=('Arial', 9, 'bold'), cursor='hand2', width=12)
+        select_btn.pack(side=tk.LEFT, padx=2)
+        
+        start_btn = tk.Button(controls, text="[START]", 
                              command=lambda: self.start_automation(hwnd, status_var, start_btn, stop_btn),
                              bg='#2ecc71', fg='#ffffff', relief=tk.FLAT,
                              font=('Arial', 9, 'bold'), cursor='hand2', width=8)
         start_btn.pack(side=tk.LEFT, padx=2)
         
-        stop_btn = tk.Button(controls, text="⬛ Stop", 
+        stop_btn = tk.Button(controls, text="[STOP]", 
                             command=lambda: self.stop_automation(hwnd, status_var, start_btn, stop_btn),
                             bg='#e74c3c', fg='#ffffff', relief=tk.FLAT,
                             font=('Arial', 9, 'bold'), cursor='hand2', width=8,
@@ -361,7 +374,7 @@ class TibiaAutomation:
             return
         
         self.running_automations[hwnd] = True
-        status_var.set("🟢 Rodando")
+        status_var.set("[RODANDO]")
         start_btn.config(state=tk.DISABLED)
         stop_btn.config(state=tk.NORMAL)
         
@@ -372,9 +385,24 @@ class TibiaAutomation:
     def stop_automation(self, hwnd, status_var, start_btn, stop_btn):
         """Para automação para uma janela"""
         self.running_automations[hwnd] = False
-        status_var.set("⚫ Parado")
+        status_var.set("[PARADO]")
         start_btn.config(state=tk.NORMAL)
         stop_btn.config(state=tk.DISABLED)
+    
+    def select_client(self, hwnd, button=None):
+        """Seleciona um cliente para ativar/desativar via INSERT/DEL"""
+        # Reseta botão anterior se existir
+        if self.selected_client_button:
+            self.selected_client_button.config(bg='#0d7377', fg='white')
+        
+        # Destaca novo botão
+        if button:
+            button.config(bg='#2ecc71', fg='white')  # Verde brilhante
+            self.selected_client_button = button
+        
+        # Atualiza cliente selecionado
+        self.selected_client_hwnd = hwnd
+        print(f"[OK] Cliente selecionado: {win32gui.GetWindowText(hwnd)}")
     
     def start_keyboard_monitor(self):
         """Inicia monitoramento de teclado em background para detectar digitação"""
@@ -403,8 +431,46 @@ class TibiaAutomation:
         monitor_thread = threading.Thread(target=monitor_keyboard, daemon=True)
         monitor_thread.start()
     
+    def start_toggle_hotkey_listener(self):
+        """Listener para INSERT (ativar) e DEL (desativar)"""
+        def on_press(key):
+            try:
+                if self.selected_client_hwnd and win32gui.IsWindow(self.selected_client_hwnd):
+                    if hasattr(key, 'name'):
+                        key_name = key.name.lower()
+                    else:
+                        key_name = str(key).strip("'").lower()
+                    
+                    # INSERT = ativar
+                    if key_name == 'insert':
+                        if not self.running_automations.get(self.selected_client_hwnd, False):
+                            self.running_automations[self.selected_client_hwnd] = True
+                            thread = threading.Thread(target=self.automation_loop, args=(self.selected_client_hwnd,), daemon=True)
+                            self.automation_threads[self.selected_client_hwnd] = thread
+                            thread.start()
+                            print("[ON] Automacao ativada via INSERT")
+                    
+                    # DEL = desativar
+                    elif key_name == 'delete':
+                        if self.running_automations.get(self.selected_client_hwnd, False):
+                            self.running_automations[self.selected_client_hwnd] = False
+                            print("[OFF] Automacao desativada via DEL")
+            except Exception as e:
+                pass
+        
+        def on_release(key):
+            pass
+        
+        self.listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+        self.listener.start()
+        print("[OK] Hotkeys de toggle (INSERT/DEL) ativados")
+    
     def run(self):
-        self.root.mainloop()
+        try:
+            self.root.mainloop()
+        finally:
+            if self.listener:
+                self.listener.stop()
 
 if __name__ == "__main__":
     app = TibiaAutomation()
